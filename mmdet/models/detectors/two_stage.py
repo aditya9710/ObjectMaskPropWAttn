@@ -21,6 +21,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, #BBoxTestMixin,
     def __init__(self,
                  backbone,
                  neck=None,
+                 neck_attn=None,
                  shared_head=None,
                  rpn_head=None,
                  bbox_roi_extractor=None,
@@ -37,6 +38,9 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, #BBoxTestMixin,
 
         if neck is not None:
             self.neck = builder.build_neck(neck)
+
+        if neck_attn is not None:
+            self.neck_attn = builder.build_neck(neck_attn)
 
         if shared_head is not None:
             self.shared_head = builder.build_shared_head(shared_head)
@@ -90,6 +94,8 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, #BBoxTestMixin,
                     m.init_weights()
             else:
                 self.neck.init_weights()
+        if self.neck_attn:
+            self.neck_attn.init_weights()
         if self.with_shared_head:
             self.shared_head.init_weights(pretrained=pretrained)
         if self.with_rpn:

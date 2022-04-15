@@ -9,7 +9,6 @@ from ..utils import ConvModule
 
 @NECKS.register_module
 class FPN(nn.Module):
-
     def __init__(self,
                  in_channels,
                  out_channels,
@@ -44,7 +43,6 @@ class FPN(nn.Module):
         self.end_level = end_level
         self.add_extra_convs = add_extra_convs
         self.extra_convs_on_inputs = extra_convs_on_inputs
-
         self.lateral_convs = nn.ModuleList()
         self.fpn_convs = nn.ModuleList()
 
