@@ -99,6 +99,24 @@ class PropHead(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.loss_mask = build_loss(loss_mask)
 
+        #ra35
+        padding = (self.conv_kernel_size - 1) // 2
+        self.conv1 = ConvModule(
+                    self.conv_out_channels,
+                    self.conv_out_channels,
+                    self.conv_kernel_size,
+                    padding=padding,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg)
+        self.conv2 = ConvModule(
+                    self.conv_out_channels,
+                    self.conv_out_channels,
+                    self.conv_kernel_size,
+                    padding=padding,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg)
+#        self.gamma = torch.nn.Parameter(torch.Tensor([0.5]), requires_grad=True)# torch.Tensor(0.5, requires_grad=True)
+
     def weights_init(self, m):
         if isinstance(m, nn.Conv2d):
             nn.init.kaiming_normal_(
@@ -117,10 +135,34 @@ class PropHead(nn.Module):
         :return: (batchSize, H*W, H*W)
         """
         (batchSize, feature_dim, H, W) = ref.shape
+        print("batch get simi mat ref shape: ", ref.shape)
         ref = ref.permute(0, 2, 3, 1).reshape(batchSize, -1, feature_dim)
         target = target.reshape(batchSize, feature_dim, -1)
         T = ref.bmm(target)
+        print("T shape: ", T.shape)
         return T
+
+    def batch_get_similarity_matrix_ra35(self, ref, x):
+        """Forward function."""
+    
+        x_f = self.relu(self.conv1(x.clone()))
+        r_f = self.relu(self.conv1(ref.clone()))
+
+        (batchSize, feature_dim, H, W) = x_f.shape
+
+        x_f = x_f.permute(0, 2, 3, 1).reshape(batchSize, -1, feature_dim)
+        r_f = r_f.reshape(batchSize, feature_dim, -1)
+
+        corr_map = x_f.bmm(r_f).softmax(dim=1)  # bs x wh x wh
+
+        ref_conv2 = self.relu(self.conv2(ref.clone())).reshape(batchSize, feature_dim, -1)  # bs x c x wh
+
+        attn = ref_conv2.bmm(corr_map).reshape(batchSize, -1, feature_dim)   # bs x c x w x h
+        output = attn.bmm(ref.reshape(batchSize, feature_dim, -1))
+
+    #print(type(output))
+        return output
+    
 
     def get_spatial_weight(self, shape, sigma):
         """
@@ -232,6 +274,7 @@ class PropHead(nn.Module):
         batchSize, d, H, W = onehot_refmasks.shape
         onehot_refmasks = onehot_refmasks.reshape(batchSize, d, -1)
         prediction = onehot_refmasks.bmm(global_similarity)
+        print("prop head batch global predict prediction shape : ", prediction.shape)
         return prediction.reshape(batchSize, d, H, W)
 
     @auto_fp16()
@@ -240,13 +283,22 @@ class PropHead(nn.Module):
         # here we compute a correlation matrix of x and ref_x
         x_feats = self.extract_feats(x)
         r_feats = self.extract_feats(ref_x)
+
+        print("Prop head x_feats.shape: ", x_feats.shape)
+        print("Prop head r_feats.shape: ", r_feats.shape)
+        print("Prop head ref_boxlist shape: ", ref_boxlist)
+        #x0 = self.relu(self.conv1(x))
+        #x1 = self.relu(self.conv1(ref))
         global_similarity = self.batch_get_similarity_matrix(r_feats, x_feats)
+        print("prop head global similarity pre soft shape: ", global_similarity.shape)
         global_similarity = global_similarity.softmax(dim=1)
+        print("prop head global similarity post soft shape: ", global_similarity.shape)
         del ref_x, r_feats#, x_feats
         max_numbox = np.max(np.array([ref_boxes.shape[0] for ref_boxes in ref_boxlist]))
         rsz_boxes = torch.zeros(
             (len(ref_boxlist), max_numbox, *x[1].shape[2:]), 
             dtype=torch.float, device=global_similarity.device)
+        print("prop head rsz_boxes shape ", rsz_boxes.shape)
         for b_id, ref_boxes in enumerate(ref_boxlist):
             for m_id, ref_box in enumerate(ref_boxes):
                 # scaling from imgsize to x1 size
@@ -255,10 +307,13 @@ class PropHead(nn.Module):
             # rsz_boxes[b_id, 0] = 1. - torch.max(rsz_boxes[b_id], 0).values
         fg_pred = self.batch_global_predict(global_similarity, rsz_boxes)
         bg_pred = self.batch_global_predict(global_similarity, 1. - rsz_boxes)
+        print("Prop head fg_pred shape: ", fg_pred.shape)
         # prediction = F.interpolate(prediction,
         #                            scale_factor=8., mode='bilinear')
         fg_pred = F.interpolate(fg_pred, scale_factor=8., mode='bilinear')
         bg_pred = F.interpolate(bg_pred, scale_factor=8., mode='bilinear')
+        
+        print("prophead fg_pred shape post interpolate: ", fg_pred.shape)
         # fg_pred = aligned_bilinear(fg_pred, scale_factor=8)
         # bg_pred = aligned_bilinear(bg_pred, scale_factor=8)
         fg_attnlist = []
@@ -281,15 +336,20 @@ class PropHead(nn.Module):
             attnfeatlist.append(attn_feat)
         # Mask prediction
         x = torch.cat(attnfeatlist, 0)
+        print("prop head x shape: ", x.shape)
         for conv in self.mask_convs:
             x = conv(x)
+        print("prop head conv out shape: ", x.shape)
         if self.upsample is not None:
             x = self.upsample(x)
             x = self.relu(x)
+        print("prop head x out shape: ", x.shape)
         mask_pred = self.conv_logits(x)
+        print("prop head mask_pred pre shape: ", mask_pred.shape)
         mask_pred = F.interpolate(mask_pred, scale_factor=4., mode='bilinear')
         # mask_pred = aligned_bilinear(mask_pred, scale_factor=4)
-
+        print("prop head mask_pred post shape ", mask_pred.shape)
+        # print("fg_attnlist: ", fg_attnlist)
         return fg_attnlist, bg_attnlist, mask_pred
 
     def attn_loss(self, fg_predss, bg_predss, gt_masks, gt_pids, reduce=True):

@@ -12,34 +12,37 @@ from ..utils import build_conv_layer
 class AttnNeck(nn.Module):
     def __init__(self, in_channels,
                  out_channels,
-                 inplanes,
-                 outplanes,
-                 gamma,
+                 kernel_sz = 3,
                  stride=1,
                  conv_cfg=None,
                  norm_cfg=None,
                  ):
-        super.__init__()
+        super(AttnNeck, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
+
+        padding = (kernel_sz - 1) // 2
+
+
         self.conv1 = build_conv_layer(
             conv_cfg,
-            inplanes,
-            outplanes,
-            3,
+            in_channels,
+            out_channels,
+            kernel_sz,
             stride=stride,
-            padding="same",
-            bias=False)
+            padding=padding,
+            bias=True)
         self.conv2 = build_conv_layer(
             conv_cfg,
-            inplanes,
-            outplanes,
-            3,
+            in_channels,
+            out_channels,
+            kernel_sz,
             stride=stride,
-            padding="same",
-            bias=False)
+            padding=padding,
+            bias=True)
+        
         self.relu = nn.ReLU(inplace=True)
-        self.gamma = torch.tensor(gamma, requires_grad=True)
+        self.gamma = torch.nn.Parameter(torch.Tensor([0.5]), requires_grad=True)
 
     # default init_weights for conv(msra) and norm in ConvModule
     def init_weights(self):
@@ -48,21 +51,27 @@ class AttnNeck(nn.Module):
                 xavier_init(m, distribution='uniform')
 
     @auto_fp16()  # Convert inputs to fp16
-    def forward(self, inputs, ref):
+    def forward(self, x, ref_x):
         """Forward function."""
-        x0 = self.relu(self.conv1(inputs))
-        x1 = self.relu(self.conv1(ref))
+        out = []
+        for x_feat, r_feat in zip(x, ref_x):
+            print(x_feat.shape, r_feat.shape)
 
-        (batchSize, feature_dim, H, W) = x0.shape
-        x0 = x1.permute(0, 2, 3, 1).reshape(batchSize, -1, feature_dim)
-        x1 = x1.reshape(batchSize, feature_dim, -1)
-        corr = x0.bmm(x1).softmax(dim=1)
+            x_f = self.relu(self.conv1(x_feat))
+            r_f = self.relu(self.conv1(r_feat))
 
-        x1 = self.relu(self.conv2(ref))
+            (batchSize, feature_dim, H, W) = x_f.shape
+            x_f = x_f.permute(0, 2, 3, 1).reshape(batchSize, -1, feature_dim)
+            r_f = r_f.reshape(batchSize, feature_dim, -1)
+            corr = x_f.bmm(r_f).softmax(dim=1)
 
-        (batchSize, feature_dim, H, W) = x1.shape
-        x1 = x1.reshape(batchSize, feature_dim, -1)
-        A = x1.bmm(corr)
-        A = A.reshape(inputs.shape)
-        output = A * self.gamma + ref
-        return output
+            ref_c2 = self.relu(self.conv2(r_feat))
+
+            (batchSize, feature_dim, H, W) = ref_c2.shape
+            ref_c2 = ref_c2.reshape(batchSize, feature_dim, -1)
+            A = ref_c2.bmm(corr).reshape(x_feat.shape)
+            output = A * self.gamma + r_feat
+
+            out.append(output)
+        return tuple(out)
+

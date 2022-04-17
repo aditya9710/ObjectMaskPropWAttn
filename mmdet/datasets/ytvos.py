@@ -243,12 +243,13 @@ class YTVOSDataset(CustomDataset):
         # same output for different processes. Therefore we use np.random.RandomState().
         random_state = np.random.RandomState()
         ann = self.get_ann_info(vid, frame_id)
-        
+        # print("Annotation info: ", ann)
         # instaboost augmentation
         if self.instaboost is not None:
             img, ann = self.instaboost({'img': img, 'ann_info': ann}, 
                                        random_state=random_state).values()
         ref_ann = self.get_ann_info(vid, ref_frame_id)
+        # print("Reference annotation info: ", ref_ann)
         gt_bboxes = ann['bboxes']
         gt_labels = ann['labels']
         ref_bboxes = ref_ann['bboxes']
@@ -259,6 +260,9 @@ class YTVOSDataset(CustomDataset):
         # compute matching of reference frame with current frame
         # 0 denote there is no matching
         gt_pids = [ref_ids.index(i)+1 if i in ref_ids else 0 for i in gt_ids]
+        print("gt_pids: ", gt_pids)
+
+
         if self.with_crowd:
             gt_bboxes_ignore = ann['bboxes_ignore']
 
@@ -350,6 +354,7 @@ class YTVOSDataset(CustomDataset):
             data['ref_masks'] = DC(ref_masks, cpu_only=True)
         if self.with_seg:
             data['gt_semantic_seg'] = DC(to_tensor(gt_seg), stack=True)
+        # print("Data: ", data)
         return data
 
     def prepare_test_img(self, idx):

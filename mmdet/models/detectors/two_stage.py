@@ -114,8 +114,14 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, #BBoxTestMixin,
 
     def extract_feat(self, img):
         x = self.backbone(img)
+        #print("shape of output of feature extractor only: ", len(x))
+        #for ky in x:
+         #   print("shapes: ", ky.shape)
         if self.with_neck:
             x = self.neck(x)
+        for ky in x:
+            print("shapes fpn out: ", ky.shape)
+        
         return x
 
     def forward_dummy(self, img):
@@ -159,14 +165,25 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, #BBoxTestMixin,
                       gt_masks=None,
                       ref_masks=None,
                       proposals=None):
+
+        print("Type: ", type(gt_bboxes))
+        print("img shape ", img.shape)
+        print("ref img shape ", ref_img.shape)
+        #print("forward_train gt_bboxes shape : ", gt_bboxes)
+        #print("forward_train ref_bboxes shape : ", ref_bboxes)
+        #print("forward train gt_labels shape : ", gt_labels)
+        # print("forward train ref_masks shape : ", ref_masks)
+
         x = self.extract_feat(img)
         ref_x = self.extract_feat(ref_img)
-
+        # print("fpn out x shape: ", x.shape)
+        sta = self.neck_attn(x, ref_x)
         losses = dict()
 
         # RPN forward and loss
         if self.with_rpn:
-            rpn_outs = self.rpn_head(x)
+            rpn_outs = self.rpn_head(sta)
+            # print("rpn_outs[0], rpn_outs[1] shape: ", rpn_outs[0].shape, rpn_outs[1].shape)
             rpn_loss_inputs = rpn_outs + (gt_bboxes, img_meta,
                                           self.train_cfg.rpn)
             rpn_losses = self.rpn_head.loss(
@@ -445,7 +462,7 @@ class TwoStageDetector(BaseDetector, RPNTestMixin, #BBoxTestMixin,
                     if type(r_boxes) == list:
                         continue
                     if img_meta[0]['video_id'] == 6:
-                        pdb.set_trace()
+                        pass #pdb.set_trace()
                     else:
                         continue
                     pred_mdict = self.prop_head.predict(

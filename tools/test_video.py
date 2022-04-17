@@ -92,6 +92,7 @@ def main():
     assert args.gpus == 1
     model = build_detector(
         cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
+    print("Model arch, ", model)
     # if args.swa:
     #     swa_model = AveragedModel(model)
     #     load_checkpoint(model, args.checkpoint, 
