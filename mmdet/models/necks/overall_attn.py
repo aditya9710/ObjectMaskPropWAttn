@@ -61,17 +61,17 @@ class AttnNeck(nn.Module):
             r_f = self.relu(self.conv1(r_feat))
 
             (batchSize, feature_dim, H, W) = x_f.shape
-            x_f = x_f.permute(0, 2, 3, 1).reshape(batchSize, -1, feature_dim)
-            r_f = r_f.reshape(batchSize, feature_dim, -1)
-            corr = x_f.bmm(r_f).softmax(dim=1)
+            x_f = x_f.reshape(batchSize, feature_dim, -1) # c x wh
+            r_f = r_f.permute(0, 2, 3, 1).reshape(batchSize, -1, feature_dim)  # wh x c
+            corr = r_f.bmm(x_f).softmax(dim=1)  # wh x wh
 
-            ref_c2 = self.relu(self.conv2(r_feat))
+            ref_c2 = self.relu(self.conv2(x_feat)) # c x w x h
 
             (batchSize, feature_dim, H, W) = ref_c2.shape
-            ref_c2 = ref_c2.reshape(batchSize, feature_dim, -1)
-            A = ref_c2.bmm(corr).reshape(x_feat.shape)
-            output = A * self.gamma + r_feat
-
+            ref_c2 = ref_c2.reshape(batchSize, feature_dim, -1) # c x wh
+            A = ref_c2.bmm(corr).reshape(x_feat.shape)  # c x w x h
+            output = A * self.gamma + x_feat
             out.append(output)
+
         return tuple(out)
 
