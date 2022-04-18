@@ -98,6 +98,8 @@ class PropHead(nn.Module):
         self.conv_logits = nn.Conv2d(self.conv_out_channels, out_channels, 1)
         self.relu = nn.ReLU(inplace=True)
         self.loss_mask = build_loss(loss_mask)
+        self.weight_gaurav = torch.empty(4,49,256,requires_grad=True)
+        self.weight_gaurav = nn.init.xavier_uniform_(self.weight_gaurav)
 
     def weights_init(self, m):
         if isinstance(m, nn.Conv2d):
@@ -109,6 +111,18 @@ class PropHead(nn.Module):
         # nn.init.xavier_uniform_(m.weight)
         # nn.init.zeros_(m.bias)
 
+    def get_weight_gaurav(self, shape, sigma):
+        (H, W) = shape
+
+        index_matrix = torch.arange(
+            H * W, dtype=torch.long).reshape(H * W, 1).cuda()
+        index_matrix = torch.cat(
+            (index_matrix / W, index_matrix % W), -1)  # (H*W, 2)
+        d = index_matrix - index_matrix.unsqueeze(1)  # (H*W, H*W, 2)
+        d = d.float().pow(2).sum(-1)  # (H*W, H*W)
+        w = (- d / sigma ** 2).exp()
+        return w
+
     def batch_get_similarity_matrix(self, ref, target):
         """
         Get pixel-level similarity matrix.
@@ -117,10 +131,14 @@ class PropHead(nn.Module):
         :return: (batchSize, H*W, H*W)
         """
         (batchSize, feature_dim, H, W) = ref.shape
-        ref = ref.permute(0, 2, 3, 1).reshape(batchSize, -1, feature_dim)
-        target = target.reshape(batchSize, feature_dim, -1)
-        T = ref.bmm(target)
-        return T
+        ref = ref.permute(0, 2, 3, 1).reshape(batchSize, -1, feature_dim) #N,(H*W),Features
+        #w = torch.empty(ref)
+        #weight = nn.init.xavier_uniform_(w)
+        weight_ref = ref.bmm(self.weight_gaurav)
+        target = target.reshape(batchSize, feature_dim, -1) #N , Features , (H*W)
+
+        T = weight_ref.bmm(target) #element wise product  #N X F1 x F2
+        return T #matrix N X f1 X f2
 
     def get_spatial_weight(self, shape, sigma):
         """
@@ -240,18 +258,20 @@ class PropHead(nn.Module):
         # here we compute a correlation matrix of x and ref_x
         x_feats = self.extract_feats(x)
         r_feats = self.extract_feats(ref_x)
-        global_similarity = self.batch_get_similarity_matrix(r_feats, x_feats)
-        global_similarity = global_similarity.softmax(dim=1)
+        global_similarity = self.batch_get_similarity_matrix(r_feats, x_feats) #matrix N X f1 X f2
+        global_similarity = global_similarity.softmax(dim=1)  # row softmax
         del ref_x, r_feats#, x_feats
-        max_numbox = np.max(np.array([ref_boxes.shape[0] for ref_boxes in ref_boxlist]))
+        max_numbox = np.max(np.array([ref_boxes.shape[0] for ref_boxes in ref_boxlist])) #np array of number of boxes in ref boxes #get max box number from that array
         rsz_boxes = torch.zeros(
-            (len(ref_boxlist), max_numbox, *x[1].shape[2:]), 
+            (len(ref_boxlist), max_numbox, *x[1].shape[2:]),  #a matrix with N(number of boxliest)*(in each ref img max of that batch ref_boxes) #boces of #shape of features
             dtype=torch.float, device=global_similarity.device)
+        # poper shaped boxes containing zeroes with shape equal to (ref_boxlist),number of refs in img,features size
         for b_id, ref_boxes in enumerate(ref_boxlist):
             for m_id, ref_box in enumerate(ref_boxes):
                 # scaling from imgsize to x1 size
-                rsz_box = (ref_box//8).to(torch.int) 
-                rsz_boxes[b_id, m_id, rsz_box[1]:rsz_box[3], rsz_box[0]:rsz_box[2]] = 1
+                rsz_box = (ref_box//8).to(torch.int) #no idea why specificaly by 8
+                rsz_boxes[b_id, m_id, rsz_box[1]:rsz_box[3], rsz_box[0]:rsz_box[2]] = 1 
+                #[,,y,w,x,h]
             # rsz_boxes[b_id, 0] = 1. - torch.max(rsz_boxes[b_id], 0).values
         fg_pred = self.batch_global_predict(global_similarity, rsz_boxes)
         bg_pred = self.batch_global_predict(global_similarity, 1. - rsz_boxes)
