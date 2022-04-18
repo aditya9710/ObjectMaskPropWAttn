@@ -209,15 +209,23 @@ class YTVOSDataset(CustomDataset):
         assert len(valid_samples) > 0
         return random.choice(valid_samples)
 
+
     def prepare_train_img(self, idx):
         # prepare a pair of image in a sequence
         vid,  frame_id = idx
+
+        if frame_id == 0:
+            frame_id += 1
+
         vid_info = self.vid_infos[vid]
         # load image
         img = mmcv.imread(
             osp.join(self.img_prefix, vid_info['filenames'][frame_id]))
         basename = osp.basename(vid_info['filenames'][frame_id])
-        _, ref_frame_id = self.sample_ref(idx)
+
+        # _, ref_frame_id = self.sample_ref(idx)
+        ref_frame_id = frame_id - 1 
+
         ref_img = mmcv.imread(
             osp.join(self.img_prefix, vid_info['filenames'][ref_frame_id]))
         # load proposals if necessary

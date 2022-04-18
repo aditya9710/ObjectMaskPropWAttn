@@ -12,7 +12,7 @@ from ..utils import build_conv_layer
 class AttnNeck(nn.Module):
     def __init__(self, in_channels,
                  out_channels,
-                 kernel_sz = 3,
+                 kernel_sz=3,
                  stride=1,
                  conv_cfg=None,
                  norm_cfg=None,
@@ -22,7 +22,6 @@ class AttnNeck(nn.Module):
         self.out_channels = out_channels
 
         padding = (kernel_sz - 1) // 2
-
 
         self.conv1 = build_conv_layer(
             conv_cfg,
@@ -68,7 +67,7 @@ class AttnNeck(nn.Module):
             ref_c2 = self.relu(self.conv2(x_feat)) # c x w x h
 
             (batchSize, feature_dim, H, W) = ref_c2.shape
-            ref_c2 = ref_c2.reshape(batchSize, feature_dim, -1) # c x wh
+            ref_c2 = ref_c2.reshape(batchSize, feature_dim, -1)  # c x wh
             A = ref_c2.bmm(corr).reshape(x_feat.shape)  # c x w x h
             output = A * self.gamma + x_feat
             out.append(output)
