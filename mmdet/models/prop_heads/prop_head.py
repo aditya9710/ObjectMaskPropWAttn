@@ -98,8 +98,9 @@ class PropHead(nn.Module):
         self.conv_logits = nn.Conv2d(self.conv_out_channels, out_channels, 1)
         self.relu = nn.ReLU(inplace=True)
         self.loss_mask = build_loss(loss_mask)
-        self.weight_gaurav = torch.empty(4,49,256,requires_grad=True)
-        self.weight_gaurav = nn.init.xavier_uniform_(self.weight_gaurav)
+        weight_gaurav = torch.empty((4,49,256), dtype=torch.float, requires_grad=True).to(torch.cuda.current_device())
+        #self.weight_gaurav = torch.empty(4,49,256,requires_grad=True)
+        #self.weight_gaurav = nn.init.xavier_uniform_(self.weight_gaurav)
 
     def weights_init(self, m):
         if isinstance(m, nn.Conv2d):
@@ -134,10 +135,12 @@ class PropHead(nn.Module):
         ref = ref.permute(0, 2, 3, 1).reshape(batchSize, -1, feature_dim) #N,(H*W),Features
         #w = torch.empty(ref)
         #weight = nn.init.xavier_uniform_(w)
-        weight_ref = ref.bmm(self.weight_gaurav)
+        #weight_ref = ref.bmm(self.weight_gaurav)
+        weight_ref = torch.bmm(ref,self.weight_gaurav)
         target = target.reshape(batchSize, feature_dim, -1) #N , Features , (H*W)
-
-        T = weight_ref.bmm(target) #element wise product  #N X F1 x F2
+        
+        T = torch.bmm(weight_ref,target)
+        #T = weight_ref.bmm(target) #element wise product  #N X F1 x F2
         return T #matrix N X f1 X f2
 
     def get_spatial_weight(self, shape, sigma):
