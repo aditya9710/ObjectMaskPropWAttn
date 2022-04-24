@@ -98,7 +98,7 @@ class PropHead(nn.Module):
         self.conv_logits = nn.Conv2d(self.conv_out_channels, out_channels, 1)
         self.relu = nn.ReLU(inplace=True)
         self.loss_mask = build_loss(loss_mask)
-        weight_gaurav = torch.empty((4,49,256), dtype=torch.float, requires_grad=True).to(torch.cuda.current_device())
+        weight_gaurav = torch.empty((4,256,256), dtype=torch.float, requires_grad=True).to(torch.cuda.current_device())
         #self.weight_gaurav = torch.empty(4,49,256,requires_grad=True)
         #self.weight_gaurav = nn.init.xavier_uniform_(self.weight_gaurav)
 
