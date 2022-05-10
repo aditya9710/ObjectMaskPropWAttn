@@ -1,4 +1,4 @@
-# Attention in Video Instance Segmentation
+# Attention based Video Instance Segmentation
 
 ([Final paper](https://github.com/Allamrahul/ObjProp/blob/main/CS541_DL_Project.pdf))
 
